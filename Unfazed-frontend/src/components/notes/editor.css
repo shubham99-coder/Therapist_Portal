@@ -1,0 +1,9 @@
+/* Tailwind's preflight strips default typography, so restore it inside the editor */
+.note-editor .tiptap { outline: none; min-height: 100%; color: #c5ddd6; font-size: 14px; line-height: 1.8; }
+.note-editor .tiptap p { margin: 0 0 0.9em; }
+.note-editor .tiptap h3 { font-family: 'DM Serif Display', Georgia, serif; font-size: 18px; color: #e2ebe8; margin: 1.1em 0 0.4em; }
+.note-editor .tiptap ul { list-style: disc; padding-left: 1.4em; margin: 0 0 0.9em; }
+.note-editor .tiptap ol { list-style: decimal; padding-left: 1.4em; margin: 0 0 0.9em; }
+.note-editor .tiptap strong { color: #e2ebe8; }
+.note-editor .tiptap blockquote { border-left: 3px solid #2d8f6a; padding-left: 12px; color: #9cbfb5; margin: 0 0 0.9em; }
+.note-editor .tiptap p.is-empty:first-child::before { content: attr(data-placeholder); color: #334d43; float: left; height: 0; pointer-events: none; }
