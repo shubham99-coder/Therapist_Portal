@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300;1,9..144,400&family=DM+Sans:wght@300;400;500;600&display=swap');
 @import 'tailwindcss';
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -17,3 +17,18 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Visible keyboard focus */
+:focus-visible { outline: 2px solid #7ecfae; outline-offset: 2px; }
+input:focus, textarea:focus, select:focus { border-color: #2d8f6a !important; }
+select option { background: #0e1f25; color: #c5ddd6; }
+input::placeholder, textarea::placeholder { color: #334d43; }
+
+/* Autofill colours for the login / signup page */
+.auth-page input:-webkit-autofill,
+.auth-page input:-webkit-autofill:hover,
+.auth-page input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #112825 inset;
+  -webkit-text-fill-color: #e8f0ee;
+  transition: background-color 5000s ease-in-out 0s;
+}
