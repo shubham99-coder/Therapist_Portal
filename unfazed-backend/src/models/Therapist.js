@@ -10,7 +10,6 @@ const therapistSchema = new mongoose.Schema(
     specializations: { type: [String], default: [] },
     languages: { type: [String], default: [] },
     photoUrl: { type: String, default: '' },
-    // plan tier will be added in Module 7 via SubscriptionTierConfig, don't hardcode it here
   },
   { timestamps: true }
 );

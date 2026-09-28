@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import api from '../../api/axiosInstance'
 import { useToast } from '../../context/ToastContext'
 import { services } from '../../data/services'
+import BookingWidget from '../../components/client/BookingWidget'
 import { inr, initials, publicLink } from '../../utils/format'
-import { Spinner } from '../../components/common/ui'
+import { Modal, Spinner } from '../../components/common/ui'
 import { C, font } from '../../components/common/theme'
 import NotFound from './NotFound'
 
@@ -23,6 +24,8 @@ export default function PublicProfile() {
   const toast = useToast()
   const [profile, setProfile] = useState(null)
   const [status, setStatus] = useState('loading')
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [confirmed, setConfirmed] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -60,7 +63,6 @@ export default function PublicProfile() {
   if (status === 'missing') return <NotFound message="No therapist uses this link. Check the spelling and try again." />
   if (status === 'error') return <NotFound message="We could not load this profile. Try again in a moment." />
 
-  const book = (service) => toast.info(`Booking for "${service.title}" opens with the scheduling module.`)
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, color: C.text }}>
@@ -80,7 +82,7 @@ export default function PublicProfile() {
               <div style={{ fontSize: 13, color: C.muted, marginTop: 10 }}>Sessions in {profile.languages.join(', ')}</div>
             )}
             <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
-              <button onClick={() => book(services[0])} style={{ padding: '11px 22px', background: C.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Book a session</button>
+              <button onClick={() => setBookingOpen(true)} style={{ padding: '11px 22px', background: C.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Book a session</button>
               <button onClick={copyLink} style={{ padding: '11px 18px', background: 'transparent', border: `1px solid ${C.line}`, borderRadius: 8, color: C.muted, fontSize: 13, cursor: 'pointer' }}>Copy link</button>
             </div>
           </div>
@@ -117,7 +119,7 @@ export default function PublicProfile() {
                 <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, margin: '0 0 16px', flex: 1 }}>{s.blurb}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontFamily: font.mono, fontSize: 16, color: C.mint }}>{inr(s.price)}</span>
-                  <button onClick={() => book(s)} style={{ padding: '7px 14px', background: 'transparent', border: `1px solid ${C.green}`, borderRadius: 7, color: C.mint, fontSize: 12, cursor: 'pointer' }}>Book</button>
+                  <button onClick={() => setBookingOpen(true)} style={{ padding: '7px 14px', background: 'transparent', border: `1px solid ${C.green}`, borderRadius: 7, color: C.mint, fontSize: 12, cursor: 'pointer' }}>Book</button>
                 </div>
               </div>
             ))}
@@ -129,6 +131,32 @@ export default function PublicProfile() {
           <Link to="/login" style={{ color: C.dim }}>Therapist log in</Link>
         </footer>
       </div>
+
+      {bookingOpen && (
+        <Modal title={`Book a session with ${profile.name}`} onClose={() => setBookingOpen(false)} width={520}>
+          <BookingWidget
+            slug={profile.slug}
+            defaultDuration={60}
+            services={services}
+            onBooked={(result) => { setBookingOpen(false); setConfirmed(result) }}
+          />
+        </Modal>
+      )}
+
+      {confirmed && (
+        <Modal title="You're booked" onClose={() => setConfirmed(null)} width={420}>
+          <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginTop: 0 }}>
+            Your session is confirmed. A quick intake form helps {profile.name} prepare for your first session.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={() => setConfirmed(null)} style={{ padding: '9px 16px', background: 'transparent', border: `1px solid ${C.line}`, borderRadius: 8, color: C.muted, fontSize: 13, cursor: 'pointer' }}>Later</button>
+            <Link to={`/${profile.slug}/intake/${confirmed.clientId}`} onClick={() => setConfirmed(null)}
+              style={{ padding: '9px 16px', background: C.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' }}>
+              Complete intake form
+            </Link>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
