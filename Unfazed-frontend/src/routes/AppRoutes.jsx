@@ -5,6 +5,7 @@ import DashboardLayout from '../components/common/DashboardLayout'
 import AuthPage from '../pages/auth/AuthPage'
 import PublicProfile from '../pages/client/PublicProfile'
 import IntakeForm from '../pages/client/IntakeForm'
+import ClientNotes from '../pages/client/ClientNotes'
 import Dashboard from '../pages/therapist/Dashboard'
 import Schedule from '../pages/therapist/Schedule'
 import Clients from '../pages/therapist/Clients'
@@ -51,6 +52,7 @@ export default function AppRoutes() {
 
       {/* Static routes above win over these dynamic ones; intake must come before the bare :slug route */}
       <Route path="/:slug/intake/:clientId" element={<IntakeForm />} />
+      <Route path="/client/:clientId/notes" element={<ClientNotes />} />
       <Route path="/:slug" element={<PublicProfile />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

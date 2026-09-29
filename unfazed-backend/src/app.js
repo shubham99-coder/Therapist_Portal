@@ -27,6 +27,7 @@ app.use('/api/clients', require('./routes/clientRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/packages', require('./routes/packageRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/notes', require('./routes/noteRoutes'));
 
 app.use(errorHandler);
 

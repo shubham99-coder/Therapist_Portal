@@ -75,7 +75,10 @@ export default function IntakeForm() {
           <div style={{ ...S.card, padding: 24, textAlign: 'center' }}>
             <div style={{ fontFamily: font.serif, fontSize: 18, color: C.text2, marginBottom: 8 }}>Thanks — this is already on file</div>
             <p style={{ fontSize: 13, color: C.muted }}>Your therapist has received your intake information and consent.</p>
-            <Link to={`/${slug}`} style={{ color: C.mint, fontSize: 13 }}>Back to the practice page</Link>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <Link to={`/client/${clientId}/notes`} style={{ color: C.mint, fontSize: 13 }}>View shared notes</Link>
+              <Link to={`/${slug}`} style={{ color: C.dim, fontSize: 13 }}>Back to the practice page</Link>
+            </div>
           </div>
         ) : (
           <form onSubmit={submit} noValidate style={{ ...S.card, padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
