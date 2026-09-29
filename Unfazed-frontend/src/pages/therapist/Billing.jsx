@@ -1,41 +1,60 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { useToast } from '../../context/ToastContext'
-import { initialClients, initialInvoices, packages } from '../../data/mock'
+import { getErrorMessage } from '../../utils/errors'
 import { inr } from '../../utils/format'
-import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, StatCard } from '../../components/common/ui'
+import { listPayments, invoiceUrl } from '../../api/payments'
+import { listMyPackages, createPackage, updatePackage, deletePackage } from '../../api/packages'
+import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, Spinner, StatCard } from '../../components/common/ui'
 import { C, S, chip, font } from '../../components/common/theme'
 
-const invStatus = {
+const paymentStatus = {
   paid: { bg: 'rgba(45,143,106,0.15)', text: C.mint },
-  pending: { bg: 'rgba(240,169,110,0.15)', text: C.amber },
-  overdue: { bg: 'rgba(239,68,68,0.15)', text: C.red },
+  created: { bg: 'rgba(240,169,110,0.15)', text: C.amber },
+  failed: { bg: 'rgba(239,68,68,0.15)', text: C.red },
 }
 
-function NewInvoiceModal({ onClose, onCreate, presetClient }) {
-  const { register, handleSubmit, formState: { errors } } = useForm({
-    defaultValues: { client: presetClient || initialClients[0].name, type: 'Per session', amount: 3000 },
-  })
+function NewPackageModal({ onClose, onCreate }) {
+  const [form, setForm] = useState({ name: '', sessions: 6, rate: 2800, validityDays: 120 })
+  const [errors, setErrors] = useState({})
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    const err = {}
+    if (!form.name.trim()) err.name = 'Enter a package name'
+    if (!form.sessions || form.sessions < 1) err.sessions = 'Must be at least 1 session'
+    if (!form.rate || form.rate < 1) err.rate = 'Enter a per-session rate'
+    setErrors(err)
+    if (Object.keys(err).length) return
+    setSaving(true)
+    try {
+      await onCreate({ ...form, sessions: Number(form.sessions), rate: Number(form.rate), validityDays: Number(form.validityDays) })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <Modal title="New invoice" onClose={onClose}>
-      <form onSubmit={handleSubmit(onCreate)} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Field label="CLIENT">
-          <select style={S.input} {...register('client')}>{initialClients.map((c) => <option key={c.id}>{c.name}</option>)}</select>
+    <Modal title="New package" onClose={onClose}>
+      <form onSubmit={submit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Field label="NAME" error={errors.name}>
+          <input style={S.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Starter" />
         </Field>
-        <Field label="TYPE">
-          <select style={S.input} {...register('type')}>
-            <option>Per session</option>
-            {packages.map((p) => <option key={p.sessions}>{p.sessions}-session pkg</option>)}
-          </select>
-        </Field>
-        <Field label="AMOUNT (₹)" error={errors.amount?.message}>
-          <input type="number" style={S.input} {...register('amount', { required: 'Enter an amount', min: { value: 1, message: 'Amount must be above zero' } })} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="SESSIONS" error={errors.sessions}>
+            <input type="number" style={S.input} value={form.sessions} onChange={(e) => setForm({ ...form, sessions: e.target.value })} />
+          </Field>
+          <Field label="RATE PER SESSION (₹)" error={errors.rate}>
+            <input type="number" style={S.input} value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} />
+          </Field>
+        </div>
+        <Field label="VALID FOR (DAYS)">
+          <input type="number" style={S.input} value={form.validityDays} onChange={(e) => setForm({ ...form, validityDays: e.target.value })} />
         </Field>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Create invoice</Button>
+          <Button type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add package'}</Button>
         </div>
       </form>
     </Modal>
@@ -44,81 +63,119 @@ function NewInvoiceModal({ onClose, onCreate, presetClient }) {
 
 export default function Billing() {
   const toast = useToast()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [invoices, setInvoices] = useState(initialInvoices)
+  const [loading, setLoading] = useState(true)
+  const [payments, setPayments] = useState([])
+  const [packages, setPackages] = useState([])
   const [filter, setFilter] = useState('all')
-  const [creating, setCreating] = useState(false)
-  const [presetClient, setPresetClient] = useState('')
+  const [creatingPkg, setCreatingPkg] = useState(false)
 
-  useEffect(() => {
-    if (location.state?.openNew) {
-      setPresetClient(location.state.client || '')
-      setCreating(true)
-      navigate(location.pathname, { replace: true, state: null })
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [p, pkgs] = await Promise.all([listPayments(), listMyPackages()])
+      setPayments(p)
+      setPackages(pkgs)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setLoading(false)
     }
-  }, [location, navigate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const sum = (status) => invoices.filter((i) => i.status === status).reduce((t, i) => t + i.amount, 0)
-  const count = (status) => invoices.filter((i) => i.status === status).length
-  const visible = useMemo(() => invoices.filter((i) => filter === 'all' || i.status === filter), [invoices, filter])
+  useEffect(() => { load() }, [load])
 
-  const markPaid = (id) => {
-    setInvoices((list) => list.map((i) => (i.id === id ? { ...i, status: 'paid' } : i)))
-    toast.success('Invoice marked as paid')
+  const sum = (status) => payments.filter((p) => p.status === status).reduce((t, p) => t + p.amount, 0)
+  const count = (status) => payments.filter((p) => p.status === status).length
+  const visible = useMemo(() => payments.filter((p) => filter === 'all' || p.status === filter), [payments, filter])
+
+  const addPackage = async (data) => {
+    try {
+      const pkg = await createPackage(data)
+      setPackages((list) => [...list, pkg])
+      setCreatingPkg(false)
+      toast.success(`${pkg.name} package added`)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
-  const createInvoice = (data) => {
-    const next = Math.max(...invoices.map((i) => Number(i.id.split('-')[1]))) + 1
-    setInvoices((list) => [{ id: `INV-${next}`, client: data.client, type: data.type, amount: Number(data.amount), date: format(new Date(), 'd MMM'), status: 'pending' }, ...list])
-    setCreating(false)
-    toast.success(`Invoice INV-${next} created`)
+  const togglePackage = async (pkg) => {
+    try {
+      const updated = await updatePackage(pkg._id, { active: !pkg.active })
+      setPackages((list) => list.map((p) => (p._id === pkg._id ? updated : p)))
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
+
+  const removePackage = async (pkg) => {
+    if (!window.confirm(`Delete "${pkg.name}"? Clients who already bought it keep their sessions.`)) return
+    try {
+      await deletePackage(pkg._id)
+      setPackages((list) => list.filter((p) => p._id !== pkg._id))
+      toast.success('Package deleted')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
+  }
+
+  if (loading) return <Spinner label="Loading billing" />
 
   return (
     <div style={S.page}>
-      <PageHeader eyebrow="PAYMENTS & PACKAGES" title="Billing" action={<Button onClick={() => { setPresetClient(''); setCreating(true) }}>+ New invoice</Button>} />
+      <PageHeader eyebrow="PAYMENTS & PACKAGES" title="Billing" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        <StatCard label="COLLECTED" value={inr(sum('paid'))} sub={`from ${count('paid')} invoices`} />
-        <StatCard label="PENDING" value={inr(sum('pending'))} sub={`${count('pending')} invoices awaiting payment`} tone="warn" />
-        <StatCard label="OVERDUE" value={inr(sum('overdue'))} sub={`${count('overdue')} invoice past due`} tone="danger" />
+        <StatCard label="COLLECTED" value={inr(sum('paid'))} sub={`from ${count('paid')} payments`} />
+        <StatCard label="AWAITING PAYMENT" value={inr(sum('created'))} sub={`${count('created')} orders started, not yet paid`} tone="warn" />
+        <StatCard label="FAILED" value={inr(sum('failed'))} sub={`${count('failed')} attempts failed`} tone="danger" />
       </div>
 
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: C.text2, marginBottom: 14, fontFamily: font.mono, letterSpacing: '0.06em' }}>SESSION PACKAGES</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          {packages.map((pkg) => (
-            <div key={pkg.sessions} style={{ background: pkg.popular ? 'rgba(45,143,106,0.12)' : C.card, border: `1px solid ${pkg.popular ? C.green : C.line}`, borderRadius: 10, padding: '16px 20px', position: 'relative' }}>
-              {pkg.popular && <span style={{ position: 'absolute', top: -1, right: 16, transform: 'translateY(-50%)', background: C.green, color: '#fff', fontSize: 9, padding: '2px 8px', borderRadius: 20, fontFamily: font.mono }}>POPULAR</span>}
-              <div style={{ fontFamily: font.serif, fontSize: 22, color: C.text, marginBottom: 4 }}>{pkg.sessions} sessions</div>
-              <div style={{ fontSize: 11, color: C.dim, marginBottom: 10 }}>{pkg.label} · {inr(pkg.rate)}/session</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: C.mint, fontFamily: font.mono }}>{inr(pkg.sessions * pkg.rate)}</div>
-            </div>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.text2, fontFamily: font.mono, letterSpacing: '0.06em' }}>SESSION PACKAGES</div>
+          <Button onClick={() => setCreatingPkg(true)}>+ New package</Button>
         </div>
+        {packages.length === 0 ? (
+          <div style={{ ...S.card, padding: 20, textAlign: 'center', fontSize: 13, color: C.dim }}>No packages yet. Clients can only pay per session until you add one.</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+            {packages.map((pkg) => (
+              <div key={pkg._id} style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: '16px 20px', opacity: pkg.active ? 1 : 0.55 }}>
+                <div style={{ fontFamily: font.serif, fontSize: 20, color: C.text, marginBottom: 4 }}>{pkg.sessions} sessions</div>
+                <div style={{ fontSize: 11, color: C.dim, marginBottom: 10 }}>{pkg.name} · {inr(pkg.rate)}/session · valid {pkg.validityDays}d</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: C.mint, fontFamily: font.mono, marginBottom: 12 }}>{inr(pkg.rate * pkg.sessions)}</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => togglePackage(pkg)} style={{ ...S.btnGhost, flex: 1, justifyContent: 'center', fontSize: 11 }}>{pkg.active ? 'Deactivate' : 'Activate'}</button>
+                  <button onClick={() => removePackage(pkg)} style={{ ...S.btnGhost, flex: 1, justifyContent: 'center', fontSize: 11 }}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <Card title="Invoices" right={<div style={{ display: 'flex', gap: 6 }}>{['all', 'paid', 'pending', 'overdue'].map((f) => <button key={f} onClick={() => setFilter(f)} style={{ ...chip(filter === f), padding: '4px 10px', fontSize: 11 }}>{f}</button>)}</div>}>
-        {visible.length === 0 ? <EmptyState title="No invoices here" hint="Change the filter or create a new invoice." /> : (
+      <Card title="Payments" right={<div style={{ display: 'flex', gap: 6 }}>{['all', 'paid', 'created', 'failed'].map((f) => <button key={f} onClick={() => setFilter(f)} style={{ ...chip(filter === f), padding: '4px 10px', fontSize: 11 }}>{f === 'created' ? 'awaiting' : f}</button>)}</div>}>
+        {visible.length === 0 ? <EmptyState title="No payments here" hint="Payments appear once a client books and pays, or buys a package." /> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.line}` }}>
-                {['INVOICE', 'CLIENT', 'TYPE', 'AMOUNT', 'DATE', 'STATUS', ''].map((h, i) => <th key={i} style={S.th}>{h}</th>)}
+                {['CLIENT', 'TYPE', 'AMOUNT', 'DATE', 'STATUS', ''].map((h, i) => <th key={i} style={S.th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
-              {visible.map((inv, i) => (
-                <tr key={inv.id} style={{ borderBottom: i < visible.length - 1 ? `1px solid ${C.line}` : 'none' }}>
-                  <td style={{ ...S.td, fontFamily: font.mono, fontSize: 12, color: C.muted }}>{inv.id}</td>
-                  <td style={{ ...S.td, fontSize: 13, fontWeight: 500, color: C.text2 }}>{inv.client}</td>
-                  <td style={{ ...S.td, fontSize: 12, color: C.muted }}>{inv.type}</td>
-                  <td style={{ ...S.td, fontFamily: font.mono, fontSize: 13, color: C.text3 }}>{inr(inv.amount)}</td>
-                  <td style={{ ...S.td, fontFamily: font.mono, fontSize: 12, color: C.muted }}>{inv.date}</td>
-                  <td style={S.td}><Badge bg={invStatus[inv.status].bg} color={invStatus[inv.status].text}>{inv.status}</Badge></td>
-                  <td style={{ ...S.td, display: 'flex', gap: 6 }}>
-                    {inv.status !== 'paid' && <button onClick={() => markPaid(inv.id)} style={{ ...S.btnGhost, padding: '4px 10px', fontSize: 11 }}>Mark paid</button>}
-                    <button onClick={() => toast.info('PDF invoices arrive with Module 4')} style={{ ...S.btnGhost, padding: '4px 10px', fontSize: 11 }}>PDF</button>
+              {visible.map((p, i) => (
+                <tr key={p._id} style={{ borderBottom: i < visible.length - 1 ? `1px solid ${C.line}` : 'none' }}>
+                  <td style={{ ...S.td, fontSize: 13, fontWeight: 500, color: C.text2 }}>{p.client?.name || '—'}</td>
+                  <td style={{ ...S.td, fontSize: 12, color: C.muted, textTransform: 'capitalize' }}>{p.kind}</td>
+                  <td style={{ ...S.td, fontFamily: font.mono, fontSize: 13, color: C.text3 }}>{inr(p.amount)}</td>
+                  <td style={{ ...S.td, fontFamily: font.mono, fontSize: 12, color: C.muted }}>{format(new Date(p.createdAt), 'd MMM')}</td>
+                  <td style={S.td}><Badge bg={paymentStatus[p.status].bg} color={paymentStatus[p.status].text}>{p.status === 'created' ? 'awaiting' : p.status}</Badge></td>
+                  <td style={S.td}>
+                    {p.status === 'paid' && (
+                      <a href={invoiceUrl(p._id)} target="_blank" rel="noreferrer" style={{ ...S.btnGhost, padding: '4px 10px', fontSize: 11, textDecoration: 'none', display: 'inline-flex' }}>Invoice</a>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -127,7 +184,7 @@ export default function Billing() {
         )}
       </Card>
 
-      {creating && <NewInvoiceModal presetClient={presetClient} onClose={() => setCreating(false)} onCreate={createInvoice} />}
+      {creatingPkg && <NewPackageModal onClose={() => setCreatingPkg(false)} onCreate={addPackage} />}
     </div>
   )
 }
