@@ -126,9 +126,13 @@ export default function PublicProfile() {
           </div>
         </section>
 
-        <footer style={{ borderTop: `1px solid ${C.line}`, paddingTop: 20, fontSize: 12, color: C.faint, display: 'flex', justifyContent: 'space-between' }}>
+        <footer style={{ borderTop: `1px solid ${C.line}`, paddingTop: 20, fontSize: 12, color: C.faint, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <span>Practice page by Unfazed</span>
-          <Link to="/login" style={{ color: C.dim }}>Therapist log in</Link>
+          <div style={{ display: 'flex', gap: 14 }}>
+            <Link to={`/client/login?slug=${profile.slug}`} style={{ color: C.dim }}>Client log in</Link>
+            <Link to={`/client/register?slug=${profile.slug}`} style={{ color: C.dim }}>Client sign up</Link>
+            <Link to="/login" style={{ color: C.dim }}>Therapist log in</Link>
+          </div>
         </footer>
       </div>
 
@@ -152,7 +156,11 @@ export default function PublicProfile() {
             <button onClick={() => setConfirmed(null)} style={{ padding: '9px 16px', background: 'transparent', border: `1px solid ${C.line}`, borderRadius: 8, color: C.muted, fontSize: 13, cursor: 'pointer' }}>Later</button>
             <Link to={`/${profile.slug}/intake/${confirmed.clientId}`} onClick={() => setConfirmed(null)}
               style={{ padding: '9px 16px', background: C.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' }}>
-              Complete intake form
+              Complete intake
+            </Link>
+            <Link to={`/client/register?clientId=${confirmed.clientId}&email=${encodeURIComponent(confirmed.session?.clientEmail || '')}&name=${encodeURIComponent(confirmed.session?.clientName || '')}&slug=${profile.slug}`} onClick={() => setConfirmed(null)}
+              style={{ padding: '9px 16px', background: 'transparent', border: `1px solid ${C.green}`, borderRadius: 8, color: C.mint, fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' }}>
+              Create client account
             </Link>
           </div>
         </Modal>

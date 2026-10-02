@@ -1,4 +1,7 @@
 const Therapist = require('../models/Therapist');
+const Client = require('../models/Client');
+const { sessionPrices } = require('../config/billing');
+const { getEntitlements } = require('../services/entitlementService');
 
 // PUBLIC: used by the /:slug page
 exports.getPublicProfile = async (req, res, next) => {
@@ -6,14 +9,33 @@ exports.getPublicProfile = async (req, res, next) => {
     const t = await Therapist.findOne({ slug: req.params.slug.toLowerCase() })
       .select('name slug bio specializations languages photoUrl');
     if (!t) return res.status(404).json({ message: 'Profile not found' });
-    res.json(t);
+    res.json({ ...t.toObject(), sessionPrices });
   } catch (err) { next(err); }
 };
 
 // PRIVATE: logged-in therapist
 exports.getMe = async (req, res, next) => {
   try {
-    res.json(await Therapist.findById(req.user.id));
+    const therapist = await Therapist.findById(req.user.id);
+    if (!therapist) return res.status(404).json({ message: 'Therapist not found' });
+
+    const subscription = await getEntitlements(req.user.id);
+    const [activeCount, totalCount] = await Promise.all([
+      Client.countDocuments({ therapist: req.user.id, status: 'active' }),
+      Client.countDocuments({ therapist: req.user.id }),
+    ]);
+
+    res.json({
+      ...therapist.toObject(),
+      subscriptionTier: subscription.tier,
+      subscription,
+      entitlements: subscription.entitlements,
+      clientUsage: {
+        activeCount,
+        totalCount,
+        activeLimit: subscription.caps?.activeClients ?? 0,
+      },
+    });
   } catch (err) { next(err); }
 };
 

@@ -1,11 +1,8 @@
 import client from './axiosInstance'
 
 
-export const createSessionOrder = async (sessionId, amount) => {
-  const { data } = await client.post('/payments/session-order', {
-    sessionId,
-    amount,
-  })
+export const createSessionOrder = async (sessionId) => {
+  const { data } = await client.post('/payments/session-order', { sessionId })
   return data
 }
 

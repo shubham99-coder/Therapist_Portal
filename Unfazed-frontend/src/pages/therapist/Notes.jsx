@@ -6,7 +6,6 @@ import { useEntitlement } from '../../hooks/useEntitlement'
 import { listClients } from '../../api/clients'
 import { createNote, deleteNote, listNotes, updateNote } from '../../api/notes'
 import { getErrorMessage } from '../../utils/errors'
-import { noteTemplates } from '../../data/mock'
 import { stripHtml } from '../../utils/format'
 import { Badge, Button, Field, Modal, PageHeader, Spinner, UpgradePrompt } from '../../components/common/ui'
 import NoteEditor from '../../components/notes/NoteEditor'
@@ -15,6 +14,12 @@ import { C, S, font } from '../../components/common/theme'
 const typeStyle = {
   private: { bg: 'rgba(193,122,232,0.15)', color: C.purple },
   shared: { bg: 'rgba(45,143,106,0.15)', color: C.mint },
+}
+
+const noteTemplates = {
+  SOAP: '<h3>Subjective</h3><p></p><h3>Objective</h3><p></p><h3>Assessment</h3><p></p><h3>Plan</h3><p></p>',
+  DAP: '<h3>Data</h3><p></p><h3>Assessment</h3><p></p><h3>Plan</h3><p></p>',
+  Progress: '<h3>Progress since last session</h3><p></p><h3>Interventions used</h3><p></p><h3>Next steps</h3><p></p>',
 }
 
 const emptyContent = '<p></p>'
@@ -143,7 +148,11 @@ useEffect(() => {
       setNotes((list) => list.map((n) => (n._id === updated._id ? updated : n)))
       toast.success(updated.type === 'shared' ? 'Note saved and shared with the client' : 'Private note saved')
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      if (err.response?.data?.code === 'ENTITLEMENT_REQUIRED') {
+        setUpgrade(true)
+      } else {
+        toast.error(getErrorMessage(err))
+      }
     } finally {
       setSaving(false)
     }

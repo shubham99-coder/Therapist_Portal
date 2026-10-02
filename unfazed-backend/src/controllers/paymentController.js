@@ -8,18 +8,22 @@ const Client = require('../models/Client');
 const Therapist = require('../models/Therapist');
 const { breakdownAmount, nextInvoiceNumber } = require('../services/paymentService');
 const { buildInvoicePDF } = require('../services/invoiceService');
+const { notifyBookingConfirmed } = require('../services/notificationService');
 
 
 exports.createSessionOrder = async (req, res, next) => {
   try {
-    const { sessionId, amount } = req.body;
-    if (!sessionId || !amount) return res.status(400).json({ message: 'sessionId and amount are required' });
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ message: 'sessionId is required' });
 
-    const session = await Session.findById(sessionId); // SCHEMA: Session
+    const session = await Session.findById(sessionId);
     if (!session) return res.status(404).json({ message: 'Session not found' });
+    if (session.status !== 'pending') return res.status(409).json({ message: 'This session is no longer awaiting payment' });
+    const amount = Number(session.amount);
+    if (!amount) return res.status(409).json({ message: 'Session price is not configured' });
 
     const order = await razorpay.orders.create({
-      amount: Math.round(amount * 100), // Razorpay wants paise
+      amount: Math.round(amount * 100),
       currency: 'INR',
       receipt: `session_${sessionId}`,
     });
@@ -82,7 +86,7 @@ exports.createPackageOrder = async (req, res, next) => {
 };
 
 
-async function markPaid(payment, razorpayPaymentId) {
+async function markPaid(payment, razorpayPaymentId, io) {
   if (payment.status === 'paid') return payment; // already handled by the other path
 
   payment.status = 'paid';
@@ -91,7 +95,26 @@ async function markPaid(payment, razorpayPaymentId) {
   await payment.save();
 
   if (payment.kind === 'session' && payment.session) {
-    await Session.findByIdAndUpdate(payment.session, { status: 'confirmed' }); // SCHEMA: Session.status
+    const session = await Session.findByIdAndUpdate(payment.session, { status: 'confirmed' }, { new: true })
+    if (session?.client) {
+      const [client, therapist] = await Promise.all([
+        Client.findById(session.client),
+        Therapist.findById(session.therapist),
+      ])
+      if (client && therapist) {
+        await notifyBookingConfirmed({
+          clientId: client._id,
+          clientEmail: client.email,
+          clientPhone: client.phone,
+          therapistId: therapist._id,
+          therapistEmail: therapist.email,
+          therapistName: therapist.name,
+          start: session.start,
+          sessionId: session._id,
+          io,
+        })
+      }
+    }
   }
 
   if (payment.kind === 'package' && payment.packageRef && !payment.clientPackage) {
@@ -129,7 +152,7 @@ exports.verifyPayment = async (req, res, next) => {
     if (!payment) return res.status(404).json({ message: 'Payment not found' });
     if (payment.razorpay_order_id !== razorpay_order_id) return res.status(400).json({ message: 'Order mismatch' });
 
-    await markPaid(payment, razorpay_payment_id);
+    await markPaid(payment, razorpay_payment_id, req.app.get('io'));
     res.json({ status: 'paid', invoiceNumber: payment.invoiceNumber, paymentId: payment._id });
   } catch (err) { next(err); }
 };
@@ -149,7 +172,7 @@ exports.razorpayWebhook = async (req, res, next) => {
     if (event.event === 'payment.captured') {
       const { order_id, id: razorpayPaymentId } = event.payload.payment.entity;
       const payment = await Payment.findOne({ razorpay_order_id: order_id });
-      if (payment) await markPaid(payment, razorpayPaymentId);
+      if (payment) await markPaid(payment, razorpayPaymentId, req.app.get('io'));
     }
 
     res.json({ received: true }); // respond fast and with 200, or Razorpay retries aggressively

@@ -10,6 +10,8 @@ const therapistSchema = new mongoose.Schema(
     specializations: { type: [String], default: [] },
     languages: { type: [String], default: [] },
     photoUrl: { type: String, default: '' },
+    // Module 7: tier is resolved through SubscriptionTierConfig; routes never gate on this string directly.
+    subscriptionTier: { type: String, default: 'pro', lowercase: true, trim: true, index: true },
   },
   { timestamps: true }
 );

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../context/AuthContext'
+import { useClientAuth } from '../../context/ClientAuthContext'
 import { getErrorMessage } from '../../utils/errors'
 import { slugify } from '../../utils/format'
 
@@ -46,36 +47,91 @@ function LogoMark({ size = 20 }) {
 }
 
 /**
- * Full-screen login / signup page.
- * mode = 'login' (route /login) or 'signup' (route /register)
+ * Unified Unfazed authentication screen.
+ * role = therapist | client
+ * mode = login | signup
+ *
+ * The therapist and client accounts still use their existing separate
+ * authentication APIs/tokens; this component only merges their UI/entry point.
  */
-export default function AuthPage({ mode }) {
+export default function AuthPage({ mode = 'login', role = 'therapist' }) {
   const navigate = useNavigate()
-  const { login, register: signUp } = useAuth()
+  const location = useLocation()
+  const isLogin = mode === 'login'
+  const isClient = role === 'client'
+  const { login: therapistLogin, register: therapistRegister } = useAuth()
+  const { login: clientLogin, register: clientRegister } = useClientAuth()
   const [showPass, setShowPass] = useState(false)
   const [serverError, setServerError] = useState('')
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)])
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm()
 
-  const isLogin = mode === 'login'
-  const previewSlug = slugify(watch('name')) || 'your-name'
+  const params = new URLSearchParams(location.search)
+  const initialName = params.get('name') || ''
+  const initialEmail = params.get('email') || ''
+  const initialPhone = params.get('phone') || ''
+  const initialSlug = params.get('slug') || ''
+  const initialClientId = params.get('clientId') || ''
+
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
+    defaultValues: {
+      name: initialName,
+      email: initialEmail,
+      phone: initialPhone,
+      therapistSlug: initialSlug,
+      password: '',
+    },
+  })
+
+  const name = watch('name')
+  const previewSlug = slugify(name) || 'your-name'
+
+  const goTo = (nextRole, nextMode = mode) => {
+    const path = nextRole === 'client'
+      ? `/client/${nextMode === 'login' ? 'login' : 'register'}`
+      : `/${nextMode === 'login' ? 'login' : 'register'}`
+
+    const search = location.search
+    navigate(`${path}${search}`)
+  }
 
   const onSubmit = async (values) => {
     setServerError('')
     try {
-      if (isLogin) await login(values.email, values.password)
-      else await signUp(values.name.trim(), values.email, values.password)
-      navigate('/dashboard', { replace: true })
+      if (isClient) {
+        if (isLogin) {
+          await clientLogin(values.email, values.password)
+        } else {
+          await clientRegister({
+            name: values.name.trim(),
+            email: values.email,
+            password: values.password,
+            phone: values.phone || '',
+            clientId: initialClientId || undefined,
+            therapistSlug: values.therapistSlug?.trim() || undefined,
+          })
+        }
+        navigate('/client/portal', { replace: true })
+      } else {
+        if (isLogin) await therapistLogin(values.email, values.password)
+        else await therapistRegister(values.name.trim(), values.email, values.password)
+        navigate('/dashboard', { replace: true })
+      }
     } catch (err) {
       setServerError(getErrorMessage(err))
     }
   }
 
-  const switchTo = (t) => navigate(t === 'login' ? '/login' : '/register')
+  const portalLabel = isClient ? 'Client Portal' : 'Therapist Portal'
+  const title = isClient
+    ? (isLogin ? 'Welcome back' : 'Join Unfazed')
+    : (isLogin ? 'Welcome back' : 'Join Unfazed')
+  const subtitle = isClient
+    ? (isLogin ? 'Log in to access your therapy portal.' : 'Create your client account and stay connected with your therapist.')
+    : (isLogin ? 'Log in to manage your practice.' : 'Set up your practice page in a minute.')
 
   return (
     <div className="auth-page min-h-screen flex" style={{ fontFamily: 'DM Sans, system-ui, sans-serif', background: '#0a1a19' }}>
-      {/* LEFT PANEL */}
+      {/* LEFT PANEL — the existing Therapist Portal design is retained */}
       <div className="hidden lg:flex flex-col justify-between relative overflow-hidden" style={{ width: '52%', background: '#0d2320' }}>
         <img
           src="https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1200&h=1600&fit=crop&auto=format"
@@ -97,24 +153,27 @@ export default function AuthPage({ mode }) {
           </div>
 
           <div className="flex-1 flex flex-col justify-center max-w-sm">
-            <div className="mb-6 text-xs font-medium tracking-widest uppercase" style={{ color: '#4db882' }}>Therapist Portal</div>
+            <div className="mb-6 text-xs font-medium tracking-widest uppercase" style={{ color: '#4db882' }}>{portalLabel}</div>
             <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 'clamp(2rem, 3.5vw, 3rem)', fontWeight: 300, color: '#e8f5f0', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
-              Your practice,<br />
-              <em style={{ fontStyle: 'italic', fontWeight: 400, color: '#6ed09a' }}>beautifully</em><br />
-              managed.
+              {isClient ? <>Your care,<br /><em style={{ fontStyle: 'italic', fontWeight: 400, color: '#6ed09a' }}>calmly</em><br />connected.</> : <>Your practice,<br /><em style={{ fontStyle: 'italic', fontWeight: 400, color: '#6ed09a' }}>beautifully</em><br />managed.</>}
             </h1>
             <p className="mt-5 leading-relaxed" style={{ color: '#7aada0', fontSize: '0.95rem', maxWidth: '28ch' }}>
-              Schedules, session notes, client progress, and billing, all in one calm workspace built for therapists.
+              {isClient
+                ? 'Appointments, payments, shared notes, intake, and secure chat with your therapist in one calm space.'
+                : 'Schedules, session notes, client progress, and billing, all in one calm workspace built for therapists.'}
             </p>
             <div className="mt-8 flex flex-wrap gap-2">
-              {['Session notes', 'Client portal', 'Billing', 'Scheduling', 'Your own link'].map((f) => (
+              {(isClient
+                ? ['Your sessions', 'Secure chat', 'Shared notes', 'Payments', 'Intake']
+                : ['Session notes', 'Client portal', 'Billing', 'Scheduling', 'Your own link']
+              ).map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: 'rgba(61,155,111,0.12)', color: '#6ed09a', border: '1px solid rgba(61,155,111,0.2)' }}>{f}</span>
               ))}
             </div>
           </div>
 
           <div className="relative pl-5" style={{ borderLeft: '2px solid rgba(78,185,132,0.3)' }}>
-            <p className="italic leading-relaxed" style={{ fontFamily: 'Fraunces, Georgia, serif', color: '#7aada0', fontSize: '0.9rem' }}>"{quote.text}"</p>
+            <p className="italic leading-relaxed" style={{ fontFamily: 'Fraunces, Georgia, serif', color: '#7aada0', fontSize: '0.9rem' }}>&quot;{quote.text}&quot;</p>
             <p className="mt-2 text-xs font-medium" style={{ color: '#4db882' }}>{quote.author}</p>
           </div>
         </div>
@@ -130,15 +189,32 @@ export default function AuthPage({ mode }) {
         </div>
 
         <div className="relative z-10 w-full max-w-md">
-          {/* tab switcher */}
-          <div className="flex rounded-xl p-1 mb-8" style={{ background: '#112825' }} role="tablist">
+          {/* Role switcher — uses the same therapist-portal visual language */}
+          <div className="flex rounded-xl p-1 mb-3" style={{ background: '#112825' }} role="tablist" aria-label="Choose portal">
+            {['therapist', 'client'].map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={role === r}
+                onClick={() => goTo(r, mode)}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold uppercase tracking-widest transition-all duration-200"
+                style={{ background: role === r ? '#1e4540' : 'transparent', color: role === r ? '#e8f5f0' : '#5a8a7d', border: 'none', cursor: 'pointer' }}
+              >
+                {r === 'therapist' ? 'Therapist' : 'Client'}
+              </button>
+            ))}
+          </div>
+
+          {/* login / signup switcher */}
+          <div className="flex rounded-xl p-1 mb-8" style={{ background: '#112825' }} role="tablist" aria-label="Authentication action">
             {['login', 'signup'].map((t) => (
               <button
                 key={t}
                 type="button"
                 role="tab"
                 aria-selected={mode === t}
-                onClick={() => switchTo(t)}
+                onClick={() => goTo(role, t)}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
                 style={{ background: mode === t ? '#1e4540' : 'transparent', color: mode === t ? '#e8f5f0' : '#5a8a7d', boxShadow: mode === t ? '0 1px 4px rgba(0,0,0,0.3)' : 'none', border: 'none', cursor: 'pointer' }}
               >
@@ -149,19 +225,17 @@ export default function AuthPage({ mode }) {
 
           <div className="mb-8">
             <h2 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 'clamp(1.75rem, 3vw, 2.25rem)', fontWeight: 400, color: '#e8f5f0', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-              {isLogin ? 'Welcome back' : 'Join Unfazed'}
+              {title}
             </h2>
-            <p className="mt-2" style={{ color: '#5a8a7d', fontSize: '0.9rem' }}>
-              {isLogin ? 'Log in to manage your practice.' : 'Set up your practice page in a minute.'}
-            </p>
+            <p className="mt-2" style={{ color: '#5a8a7d', fontSize: '0.9rem' }}>{subtitle}</p>
           </div>
 
           <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
             {!isLogin && (
               <Field label="Full name" id="name" error={errors.name?.message}>
-                <input id="name" type="text" autoComplete="name" placeholder="Dr. Sarah Chen" style={inputStyle}
+                <input id="name" type="text" autoComplete="name" placeholder={isClient ? 'Your full name' : 'Dr. Sarah Chen'} style={inputStyle}
                   {...register('name', { required: 'Enter your name' })} />
-                <div style={{ color: '#3d5f57', fontSize: '0.75rem', marginTop: 6 }}>Your link: unfazed.in/{previewSlug}</div>
+                {!isClient && <div style={{ color: '#3d5f57', fontSize: '0.75rem', marginTop: 6 }}>Your link: unfazed.in/{previewSlug}</div>}
               </Field>
             )}
 
@@ -169,6 +243,27 @@ export default function AuthPage({ mode }) {
               <input id="email" type="email" autoComplete="email" placeholder="you@example.com" style={inputStyle}
                 {...register('email', { required: 'Enter your email', pattern: { value: /^\S+@\S+\.\S+$/, message: 'Enter a valid email' } })} />
             </Field>
+
+            {!isLogin && isClient && (
+              <Field label="Phone (optional)" id="phone" error={errors.phone?.message}>
+                <input id="phone" type="tel" autoComplete="tel" placeholder="Your phone number" style={inputStyle}
+                  {...register('phone')} />
+              </Field>
+            )}
+
+            {!isLogin && isClient && !initialClientId && (
+              <Field label="Therapist link / slug" id="therapistSlug" error={errors.therapistSlug?.message}>
+                <input id="therapistSlug" type="text" autoComplete="off" placeholder="dr-sarah" style={inputStyle}
+                  {...register('therapistSlug', { required: 'Enter your therapist link or slug' })} />
+                <div style={{ color: '#3d5f57', fontSize: '0.75rem', marginTop: 6 }}>Use the therapist&apos;s public link, for example unfazed.in/dr-sarah.</div>
+              </Field>
+            )}
+
+            {!isLogin && isClient && initialClientId && (
+              <div style={{ color: '#7aada0', fontSize: '0.75rem', background: 'rgba(61,155,111,0.08)', border: '1px solid rgba(61,155,111,0.18)', borderRadius: '0.75rem', padding: '0.7rem 0.9rem' }}>
+                This account will be connected to the client record from your booking.
+              </div>
+            )}
 
             <Field label="Password" id="password" error={errors.password?.message}>
               <div className="relative">
@@ -207,13 +302,15 @@ export default function AuthPage({ mode }) {
               onMouseEnter={(e) => { if (!isSubmitting) e.currentTarget.style.background = '#4db882' }}
               onMouseLeave={(e) => (e.currentTarget.style.background = '#3d9b6f')}
             >
-              {isSubmitting ? (isLogin ? 'Logging in...' : 'Creating account...') : (isLogin ? 'Log in to portal' : 'Create your account')}
+              {isSubmitting
+                ? (isLogin ? 'Logging in...' : 'Creating account...')
+                : (isLogin ? `Log in to ${isClient ? 'client' : 'therapist'} portal` : `Create ${isClient ? 'client' : 'therapist'} account`)}
             </button>
           </form>
 
           <p className="text-center mt-8 text-sm" style={{ color: '#4a7a6d' }}>
             {isLogin ? 'New here? ' : 'Already have an account? '}
-            <button type="button" onClick={() => switchTo(isLogin ? 'signup' : 'login')} className="font-semibold"
+            <button type="button" onClick={() => goTo(role, isLogin ? 'signup' : 'login')} className="font-semibold"
               style={{ color: '#4db882', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
               {isLogin ? 'Create your account' : 'Log in'}
             </button>

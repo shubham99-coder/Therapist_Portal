@@ -1,25 +1,29 @@
 import { useAuth } from '../context/AuthContext'
 
 /**
- * Frontend mirror of the backend Entitlement Service (Module 7).
- * The server is the source of truth; this only decides what to show.
- *
- * Until Module 7 exists the backend sends no entitlements, so every
- * feature is allowed. Once GET /therapists/me returns
- *   entitlements: { 'analytics.advanced': true, 'clients.cap': 25, ... }
- * this hook starts gating the UI with no other change.
+ * Frontend display helper for Module 7.
+ * The backend remains the source of truth and enforces every gated action.
  */
 export function useEntitlement() {
   const { therapist } = useAuth()
-  const entitlements = therapist?.entitlements
+  const entitlements = therapist?.entitlements || {}
+  const subscription = therapist?.subscription || null
 
   const canAccess = (featureKey) => {
-    if (!entitlements) return true
     const value = entitlements[featureKey]
-    return value === undefined ? false : !!value
+    if (value === undefined) return false
+    return value === true || (typeof value === 'number' && value > 0)
   }
 
-  const getLimit = (featureKey) => entitlements?.[featureKey] ?? Infinity
+  const getLimit = (featureKey) => {
+    const value = entitlements[featureKey]
+    return typeof value === 'number' ? value : Infinity
+  }
 
-  return { canAccess, getLimit }
+  return {
+    canAccess,
+    getLimit,
+    subscription,
+    plans: subscription?.plans || [],
+  }
 }

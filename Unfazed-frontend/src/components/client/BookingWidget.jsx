@@ -18,6 +18,7 @@ export default function BookingWidget({
   slug,
   defaultDuration,
   services = [],
+  pricing = {},
   onBooked,
 }) {
   const [dates] = useState(() =>
@@ -41,7 +42,9 @@ export default function BookingWidget({
     services.find((service) => {
       const durationMinutes = parseInt(service.duration, 10)
       return durationMinutes === duration
-    })?.price || null
+    })?.price ||
+    Number(pricing?.[duration] || 0) ||
+    null
 
   const loadSlots = async () => {
     setLoading(true)
@@ -268,10 +271,7 @@ function ConfirmBookingModal({
       )
     }
 
-    return createSessionOrder(
-      booking.session._id,
-      amount
-    )
+    return createSessionOrder(booking.session._id)
   }
 
   return (

@@ -5,6 +5,7 @@ const clientSchema = new Schema({
   therapist: { type: Schema.Types.ObjectId, ref: 'Therapist', required: true, index: true },
   name: { type: String, required: true, trim: true },
   email: { type: String, lowercase: true, trim: true },
+  password_hash: { type: String, select: false },
   phone: { type: String, trim: true },
   age: { type: Number },
   concern: { type: String, trim: true },

@@ -12,7 +12,7 @@ import { format, startOfMonth, subMonths } from 'date-fns'
 import { useEntitlement } from '../../hooks/useEntitlement'
 import { useToast } from '../../context/ToastContext'
 import { getErrorMessage } from '../../utils/errors'
-import { getAnalyticsSummary } from '../../api/analytics'
+import { getAnalyticsAdvanced, getAnalyticsSummary } from '../../api/analytics'
 import { inr } from '../../utils/format'
 
 import {
@@ -47,13 +47,14 @@ const attendanceColor = {
 }
 
 export default function Analytics() {
-  const { canAccess } = useEntitlement()
+  const { canAccess, subscription } = useEntitlement()
   const toast = useToast()
 
   const [range, setRange] = useState(6)
   const [upgrade, setUpgrade] = useState(false)
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState(null)
+  const [advancedData, setAdvancedData] = useState(null)
 
   const advanced = canAccess('analytics.advanced')
 
@@ -63,13 +64,24 @@ export default function Analytics() {
     try {
       const data = await getAnalyticsSummary(range)
       setSummary(data)
+
+      if (advanced) {
+        try {
+          setAdvancedData(await getAnalyticsAdvanced())
+        } catch (advancedErr) {
+          console.error('Advanced analytics error:', advancedErr)
+          setAdvancedData(null)
+        }
+      } else {
+        setAdvancedData(null)
+      }
     } catch (err) {
       console.error('Analytics error:', err)
       toast.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [range, toast])
+  }, [advanced, range, toast])
 
   useEffect(() => {
     load()
@@ -95,11 +107,11 @@ export default function Analytics() {
     0,
   )
 
-  const attendanceRows = summary
+  const attendanceRows = advancedData
     ? [
-        { label: 'Completed', value: summary.attendance.completed },
-        { label: 'Cancelled', value: summary.attendance.cancelled },
-        { label: 'No-show', value: summary.attendance.noShow },
+        { label: 'Completed', value: advancedData.attendance.completed },
+        { label: 'Cancelled', value: advancedData.attendance.cancelled },
+        { label: 'No-show', value: advancedData.attendance.noShow },
       ]
     : []
 
@@ -135,19 +147,19 @@ export default function Analytics() {
           sub="cumulative, billed"
         />
         <Kpi
+          label="ACTIVE CLIENTS"
+          value={String(summary?.activeClients ?? 0)}
+          sub="real-time active client count"
+        />
+        <Kpi
           label="AVG SESSIONS/MONTH"
           value={String(summary?.avgSessionsPerMonth ?? 0)}
           sub={`real data, last ${range} months`}
         />
         <Kpi
-          label="CLIENT RETENTION"
-          value="—"
-          sub="Not yet computed"
-        />
-        <Kpi
-          label="LIFETIME VALUE"
-          value="—"
-          sub="Not yet computed"
+          label="CURRENT PLAN"
+          value={subscription?.name || '—'}
+          sub={subscription ? `up to ${subscription.caps?.activeClients ?? '—'} active clients` : 'Loading plan'}
         />
       </div>
 
@@ -225,10 +237,10 @@ export default function Analytics() {
 
             <div style={{ padding: 14, background: 'rgba(240,169,110,0.08)', border: '1px solid rgba(240,169,110,0.15)', borderRadius: 8 }}>
               <div style={{ fontSize: 11, color: C.amber, marginBottom: 2 }}>
-                No-show rate: {summary?.noShowRatePct ?? 0}%
+                No-show rate: {advancedData?.noShowRatePct ?? 0}%
               </div>
               <div style={{ fontSize: 11, color: C.muted }}>
-                Based on recorded session statuses.
+                Based on recorded session statuses this month.
               </div>
             </div>
           </Card>

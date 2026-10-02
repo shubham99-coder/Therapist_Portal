@@ -2,6 +2,8 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { C, font } from './theme'
 import { initials } from '../../utils/format'
+import { useEntitlement } from '../../hooks/useEntitlement'
+import { MessageCircle, Bell } from 'lucide-react'
 
 const icon = (children) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">{children}</svg>
@@ -17,10 +19,16 @@ const navItems = [
   { to: '/dashboard/analytics', label: 'Analytics', icon: icon(<><path d="M2 12L6 7l3 3 5-6" {...r} strokeLinejoin="round" /><path d="M1 14.5h14" {...r} /></>) },
   { to: '/dashboard/billing', label: 'Billing', icon: icon(<><rect x="1" y="3" width="14" height="10" rx="1.5" {...s} /><path d="M1 7h14" {...s} /><path d="M4 10.5h3M10 10.5h2" {...r} /></>) },
   { to: '/dashboard/settings', label: 'Settings', icon: icon(<><circle cx="8" cy="8" r="2.5" {...s} /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.414 1.414M11.536 11.536l1.414 1.414M3.05 12.95l1.414-1.414M11.536 4.464l1.414-1.414" {...r} /></>) },
+  { to: '/dashboard/chat', label: 'Chat', icon: icon(<MessageCircle size={18} />) },
+  { to: '/dashboard/notifications', label: 'Notifications', icon: icon(<Bell size={18} />) },
 ]
 
 export default function Sidebar() {
   const { therapist } = useAuth()
+  const { subscription, getLimit } = useEntitlement()
+  const activeCount = Number(therapist?.clientUsage?.activeCount || 0)
+  const activeLimit = Number(therapist?.clientUsage?.activeLimit || getLimit('clients.cap') || 0)
+  const usagePercent = activeLimit > 0 ? Math.min(100, (activeCount / activeLimit) * 100) : 0
 
   return (
     <aside style={{ width: 220, flexShrink: 0, background: C.side, borderRight: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -66,12 +74,12 @@ export default function Sidebar() {
 
       <div style={{ padding: 12, margin: '0 10px 16px', borderRadius: 8, background: 'rgba(45,143,106,0.1)', border: '1px solid rgba(45,143,106,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 10, color: C.mint, fontFamily: font.mono, letterSpacing: '0.06em' }}>PRO PLAN</span>
-          <span style={{ fontSize: 10, color: C.dim, fontFamily: font.mono }}>&#8377;2,499/mo</span>
+          <span style={{ fontSize: 10, color: C.mint, fontFamily: font.mono, letterSpacing: '0.06em' }}>{subscription?.name?.toUpperCase() || 'PLAN'}</span>
+          <span style={{ fontSize: 10, color: C.dim, fontFamily: font.mono }}>ACTIVE</span>
         </div>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>18 / 25 active clients</div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{activeCount} / {activeLimit} active clients</div>
         <div style={{ height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.08)' }}>
-          <div style={{ height: '100%', width: '72%', borderRadius: 2, background: C.green }} />
+          <div style={{ height: '100%', width: `${usagePercent}%`, borderRadius: 2, background: C.green, transition: 'width 180ms ease' }} />
         </div>
       </div>
 

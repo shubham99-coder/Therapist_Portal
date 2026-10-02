@@ -100,13 +100,20 @@ export function Spinner({ label = 'Loading' }) {
 // Shown when a gated action is blocked (wired to real data in Module 7)
 export function UpgradePrompt({ feature, onClose }) {
   return (
-    <Modal title="Upgrade to continue" onClose={onClose} width={400}>
+    <Modal title="Upgrade to continue" onClose={onClose} width={460}>
       <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginTop: 0 }}>
-        {feature} is not part of your current plan. Move to a higher plan to use it.
+        <strong style={{ color: C.text2 }}>{feature}</strong> is not included in your current plan.
+        Choose a higher plan to unlock the feature.
       </p>
+      <div style={{ padding: 14, border: `1px solid ${C.line}`, borderRadius: 8, background: 'rgba(255,255,255,0.02)', marginBottom: 18 }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: font.mono, letterSpacing: '0.06em', marginBottom: 6 }}>PLAN MANAGEMENT</div>
+        <div style={{ fontSize: 12, color: C.text3, lineHeight: 1.5 }}>
+          Your current plan and feature entitlements are controlled by the server-side subscription configuration.
+        </div>
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button variant="ghost" onClick={onClose}>Not now</Button>
-        <Button onClick={onClose}>View plans</Button>
+        <Button onClick={() => { onClose(); window.location.assign('/dashboard/settings') }}>View plans</Button>
       </div>
     </Modal>
   )

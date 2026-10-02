@@ -10,6 +10,7 @@ const sessionSchema = new Schema({
   start: { type: Date, required: true },
   end: { type: Date, required: true },
   durationMinutes: { type: Number, required: true },
+  amount: { type: Number, default: 0 },
   status: { type: String, enum: ['pending','confirmed', 'cancelled', 'completed', 'no-show'], default: 'pending' },
 }, { timestamps: true })
 

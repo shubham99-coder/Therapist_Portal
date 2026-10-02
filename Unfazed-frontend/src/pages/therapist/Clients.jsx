@@ -77,6 +77,8 @@ export default function Clients() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historySessions, setHistorySessions] = useState([])
+  const [selectedDetails, setSelectedDetails] = useState(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
   const [intakeOpen, setIntakeOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
@@ -99,6 +101,28 @@ export default function Clients() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedDetails(null)
+      return undefined
+    }
+
+    let cancelled = false
+    setDetailsLoading(true)
+    getClient(selectedId)
+      .then((full) => {
+        if (!cancelled) setSelectedDetails(full)
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(getErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setDetailsLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [selectedId, toast])
+
 
   useEffect(() => {
     if (location.state?.openAdd) {
@@ -144,7 +168,11 @@ export default function Clients() {
       setClients((list) => list.map((c) => (c._id === id ? updated : c)))
       toast.success('Status updated')
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      if (err.response?.data?.code === 'ENTITLEMENT_REQUIRED') {
+        setUpgrade(true)
+      } else {
+        toast.error(getErrorMessage(err))
+      }
     }
   }
 
@@ -152,7 +180,8 @@ export default function Clients() {
     setHistoryOpen(true)
     setHistoryLoading(true)
     try {
-      const full = await getClient(selected._id)
+      const full = selectedDetails || await getClient(selected._id)
+      setSelectedDetails(full)
       setHistorySessions(full.sessions || [])
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -169,6 +198,13 @@ export default function Clients() {
       toast.error('Could not copy the link')
     }
   }
+
+  const detailPayments = selectedDetails?.payments || []
+  const detailNotes = selectedDetails?.notes || []
+  const detailSessions = selectedDetails?.sessions || []
+  const paidTotal = detailPayments
+    .filter((payment) => payment.status === 'paid')
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
 
   const panelActions = [
     { label: 'View session history', run: openHistory },
@@ -257,6 +293,43 @@ export default function Clients() {
                   <span style={{ fontSize: 12, color: C.text3 }}>{value}</span>
                 </div>
               ))}
+              <div style={{ marginTop: 18, padding: 12, border: `1px solid ${C.line}`, borderRadius: 8 }}>
+                <div style={{ fontSize: 10, color: C.faint, fontFamily: font.mono, letterSpacing: '0.06em', marginBottom: 10 }}>
+                  CLIENT HISTORY
+                </div>
+                {detailsLoading ? (
+                  <div style={{ fontSize: 12, color: C.dim }}>Loading history...</div>
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
+                      {[
+                        ['SESSIONS', detailSessions.length],
+                        ['PAYMENTS', detailPayments.length],
+                        ['NOTES', detailNotes.length],
+                      ].map(([label, value]) => (
+                        <div key={label} style={{ padding: 8, background: C.side, borderRadius: 6 }}>
+                          <div style={{ fontSize: 9, color: C.dim, fontFamily: font.mono }}>{label}</div>
+                          <div style={{ fontSize: 16, color: C.text, fontFamily: font.serif }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted }}>
+                      Paid total: <strong style={{ color: C.text2 }}>₹{paidTotal.toLocaleString('en-IN')}</strong>
+                    </div>
+                    {detailPayments[0] && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: C.dim }}>
+                        Latest payment: ₹{Number(detailPayments[0].amount || 0).toLocaleString('en-IN')} · {detailPayments[0].status}
+                      </div>
+                    )}
+                    {detailNotes[0] && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: C.dim }}>
+                        Latest note: {detailNotes[0].type} · {detailNotes[0].format || 'freeform'}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {panelActions.map((a) => (
                   <button key={a.label} onClick={a.run} style={{ ...S.btnGhost, width: '100%', justifyContent: 'space-between' }}>{a.label}<span>→</span></button>

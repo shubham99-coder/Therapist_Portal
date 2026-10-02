@@ -1,6 +1,8 @@
 const { body, validationResult } = require('express-validator')
 const Availability = require('../models/Availability')
 const Session = require('../models/Session')
+const { sessionPrices } = require('../config/billing')
+const { notifyPostSessionFollowUp } = require('../services/notificationService')
 const Client = require('../models/Client')
 const Therapist = require('../models/Therapist')
 const { getSlotsForDate } = require('../services/slotServices')
@@ -78,6 +80,22 @@ exports.updateSessionStatus = async (req, res, next) => {
       { _id: req.params.id, therapist: req.user.id }, { status }, { new: true },
     )
     if (!session) return res.status(404).json({ message: 'Session not found' })
+    if (status === 'completed') {
+      const [client, therapist] = await Promise.all([
+        Client.findById(session.client),
+        Therapist.findById(req.user.id).select('name'),
+      ])
+      if (client && therapist) {
+        await notifyPostSessionFollowUp({
+          clientId: client._id,
+          clientEmail: client.email,
+          clientPhone: client.phone,
+          therapistName: therapist.name,
+          sessionId: session._id,
+          io: req.app.get('io'),
+        })
+      }
+    }
     res.json(session)
   } catch (err) { next(err) }
 }
@@ -168,6 +186,7 @@ exports.publicBook = async (req, res, next) => {
       session = await Session.create({
         therapist: therapist._id, client: client._id, clientName, clientEmail, clientPhone,
         start: startDate, end: endDate, durationMinutes, status: 'pending',
+        amount: sessionPrices[durationMinutes] || 0,
       })
     } catch (err) {
       if (err.code === 11000) {
@@ -176,6 +195,6 @@ exports.publicBook = async (req, res, next) => {
       throw err
     }
 
-    res.status(201).json({ session, clientId: client._id, intakeSubmitted: !!client.intake?.submittedAt,amount: durationMinutes === 90 ? 4500 : 3000, })
+    res.status(201).json({ session, clientId: client._id, intakeSubmitted: !!client.intake?.submittedAt, amount: session.amount })
   } catch (err) { next(err) }
 }

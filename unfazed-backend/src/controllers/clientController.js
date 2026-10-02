@@ -1,5 +1,8 @@
 const Client = require('../models/Client')
 const Session = require('../models/Session')
+const Payment = require('../models/Payment')
+const SessionNote = require('../models/SessionNote')
+const { canAccess, getLimit } = require('../services/entitlementService')
 
 exports.list = async (req, res, next) => {
   try {
@@ -16,8 +19,27 @@ exports.getOne = async (req, res, next) => {
   try {
     const client = await Client.findOne({ _id: req.params.id, therapist: req.user.id })
     if (!client) return res.status(404).json({ message: 'Client not found' })
-    const sessions = await Session.find({ therapist: req.user.id, client: client._id }).sort({ start: -1 })
-    res.json({ ...client.toObject(), sessions })
+    const [sessions, payments, notes] = await Promise.all([
+      Session.find({ therapist: req.user.id, client: client._id }).sort({ start: -1 }),
+      Payment.find({ therapist: req.user.id, client: client._id })
+        .select('kind amount status invoiceNumber gateway_transaction_id createdAt')
+        .sort({ createdAt: -1 }),
+      SessionNote.find({ therapist: req.user.id, client: client._id })
+        .select('session type format content createdAt updatedAt')
+        .sort({ createdAt: -1 }),
+    ])
+
+    res.json({
+      ...client.toObject(),
+      sessions,
+      payments,
+      notes,
+      history: {
+        sessionsCount: sessions.length,
+        paymentsCount: payments.length,
+        notesCount: notes.length,
+      },
+    })
   } catch (err) { next(err) }
 }
 
@@ -25,6 +47,20 @@ exports.create = async (req, res, next) => {
   try {
     const { name, age, concern, status, email, phone } = req.body
     if (!name || !name.trim()) return res.status(400).json({ message: 'Enter the client name' })
+
+    const activeLimit = await getLimit(req.user.id, 'clients.cap')
+    const activeCount = await Client.countDocuments({ therapist: req.user.id, status: 'active' })
+    const withinLimit = await canAccess(req.user.id, 'clients.cap')
+    if (!withinLimit) {
+      return res.status(403).json({
+        message: 'Your current plan has reached its active-client limit.',
+        code: 'ENTITLEMENT_REQUIRED',
+        featureKey: 'clients.cap',
+        current: activeCount,
+        limit: activeLimit,
+      })
+    }
+
     const client = await Client.create({
       therapist: req.user.id, name: name.trim(), age, concern, email, phone,
       status: status || 'intake',
@@ -38,6 +74,26 @@ exports.update = async (req, res, next) => {
     const allowed = ['name', 'age', 'concern', 'status', 'email', 'phone']
     const updates = {}
     allowed.forEach((k) => { if (req.body[k] !== undefined) updates[k] = req.body[k] })
+
+    if (updates.status === 'active') {
+      const activeLimit = await getLimit(req.user.id, 'clients.cap')
+      const activeCount = await Client.countDocuments({
+        therapist: req.user.id,
+        status: 'active',
+        _id: { $ne: req.params.id },
+      })
+      const withinLimit = await canAccess(req.user.id, 'clients.cap', { excludeClientId: req.params.id })
+      if (!withinLimit) {
+        return res.status(403).json({
+          message: 'Your current plan has reached its active-client limit.',
+          code: 'ENTITLEMENT_REQUIRED',
+          featureKey: 'clients.cap',
+          current: activeCount,
+          limit: activeLimit,
+        })
+      }
+    }
+
     const client = await Client.findOneAndUpdate(
       { _id: req.params.id, therapist: req.user.id }, updates, { new: true, runValidators: true },
     )

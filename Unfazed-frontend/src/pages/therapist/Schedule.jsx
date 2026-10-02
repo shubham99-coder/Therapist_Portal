@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDays, format, startOfWeek } from 'date-fns'
 import { useToast } from '../../context/ToastContext'
 import { getErrorMessage } from '../../utils/errors'
-import { scheduleDays, scheduleHours } from '../../data/mock'
 import {
   addBlock as apiAddBlock,
   getAvailability,
@@ -12,6 +11,9 @@ import {
 } from '../../api/scheduling'
 import { Badge, Button, Field, Modal, PageHeader, Spinner } from '../../components/common/ui'
 import { C, S, chip, font } from '../../components/common/theme'
+
+const scheduleDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const scheduleHours = Array.from({ length: 11 }, (_, i) => `${String(i + 8).padStart(2, '0')}:00`)
 
 const CELL_H = 56
 const kindColor = { session: C.green, completed: C.blue, 'no-show': C.amber, blocked: '#6b7f78' }

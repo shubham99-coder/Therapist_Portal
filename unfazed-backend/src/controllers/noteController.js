@@ -2,6 +2,7 @@ const mongoose = require('mongoose')
 const SessionNote = require('../models/SessionNote')
 const Client = require('../models/Client')
 const Session = require('../models/Session')
+const { canAccess } = require('../services/entitlementService')
 
 const allowedTypes = new Set(['private', 'shared'])
 const allowedFormats = new Set(['freeform', 'SOAP', 'DAP', 'Progress'])
@@ -95,6 +96,14 @@ exports.create = async (req, res, next) => {
     if (!allowedTypes.has(type)) return res.status(400).json({ message: 'Invalid note type' })
     if (!allowedFormats.has(format)) return res.status(400).json({ message: 'Invalid note format' })
 
+    if (format !== 'freeform' && !(await canAccess(req.user.id, 'notes.templates'))) {
+      return res.status(403).json({
+        message: 'Structured note templates are not included in your current plan.',
+        code: 'ENTITLEMENT_REQUIRED',
+        featureKey: 'notes.templates',
+      })
+    }
+
     const client = await assertClientBelongsToTherapist(clientId, req.user.id)
     if (!client) return res.status(404).json({ message: 'Client not found' })
 
@@ -142,6 +151,13 @@ exports.update = async (req, res, next) => {
 
     if (format !== undefined) {
       if (!allowedFormats.has(format)) return res.status(400).json({ message: 'Invalid note format' })
+      if (format !== 'freeform' && !(await canAccess(req.user.id, 'notes.templates'))) {
+        return res.status(403).json({
+          message: 'Structured note templates are not included in your current plan.',
+          code: 'ENTITLEMENT_REQUIRED',
+          featureKey: 'notes.templates',
+        })
+      }
       note.format = format
     }
 
